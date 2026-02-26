@@ -16,7 +16,8 @@ const CONFIG = {
 
 const RENDER_URL = process.env.RENDER_URL;
 const API_KEY = process.env.API_KEY;
-
+console.log("GET URL:", `${RENDER_URL}/pending`);
+console.log("POST URL:", `${RENDER_URL}/pending`);
 async function pollRender() {
   try {
     const response = await axios.get(RENDER_URL, {
@@ -84,3 +85,4 @@ const result = await pool.request()
 
 setInterval(pollRender, 5000);
 console.log("Bridge Agent Started...");
+
