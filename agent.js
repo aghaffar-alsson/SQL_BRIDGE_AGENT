@@ -13,15 +13,26 @@ const CONFIG = {
     trustServerCertificate: true
   }
 };
-
+console.log("SQL Configuration:", CONFIG)
 const RENDER_URL = process.env.RENDER_URL;
 const API_KEY = process.env.API_KEY;
+console.log("Render URL:", RENDER_URL);
+console.log("API Key:", API_KEY);
 console.log("GET URL:", `${RENDER_URL}/pending`);
 console.log("POST URL:", `${RENDER_URL}/pending`);
 async function pollRender() {
   try {
-    const response = await axios.get(RENDER_URL, {
-      headers: { "x-api-key": API_KEY }
+    // const response = await axios.get(RENDER_URL, {
+    //   headers: { "x-api-key": API_KEY }
+    // });
+const response = await axios.get(`${RENDER_URL}/pending`, {
+  headers: { "x-api-key": API_KEY }
+});
+// console.log("POSTING BACK:");
+// console.log("requestId:", req.requestId);
+// console.log("data:", result.recordset);
+    response.data.forEach(req => {
+      console.log("Received request:", req);
     });
 
     const requests = response.data;
@@ -68,7 +79,13 @@ const result = await pool.request()
           AND tripid = @tripid
           AND S_CODE = @studentId
     `);
-        await axios.post(RENDER_URL, {
+      // await axios.post(RENDER_URL, {
+      // requestId: req.requestId,
+      // data: result.recordset
+      // }, {
+      // headers: { "x-api-key": API_KEY }
+      // });
+      await axios.post(`${RENDER_URL}/pending`, {
         requestId: req.requestId,
         data: result.recordset
       }, {
@@ -85,4 +102,3 @@ const result = await pool.request()
 
 setInterval(pollRender, 5000);
 console.log("Bridge Agent Started...");
-
