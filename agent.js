@@ -49,12 +49,17 @@ async function pollRender() {
         .input("studentId", sql.VarChar, req.studentId)
         .input("curyear", sql.VarChar, req.curyear)
         .input("tripid", sql.Int, req.tripid)
-        .query(`
-          SELECT ISNULL(SUM(PAIDAMOUNT),0) AS TOTPAID
-          FROM [EA-FINANCE].ALSSONACTIVITIES.DBO.AM_TRP_REC
-          WHERE CURYEAR = @curyear
-            AND tripid = @tripid
-            AND S_CODE = @studentId
+        .query(`SELECT 
+        ISNULL((SELECT ISNULL(SUM(PAIDAMOUNT),0) AS TOTPAID FROM [EA-FINANCE].ALSSONACTIVITIES.DBO.AM_TRP_REC 
+        WHERE CURYEAR=@CURYEAR
+        AND tripid=@tripid
+        AND S_CODE=@studentId),0)
+        +
+        ISNULL((SELECT ISNULL(SUM(PAIDAMOUNT),0) AS TOTPAID FROM [EA-FINANCE].ALSSONACTIVITIES.DBO.BR_TRP_REC 
+        WHERE CURYEAR=@CURYEAR
+        AND tripid=@tripid
+        AND S_CODE=@studentId),0)     
+        AS TOTPAID 
         `);
 
       await axios.post(`${RENDER_URL}/pending`, {
