@@ -4,101 +4,95 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const CONFIG = {
-  user: process.env.USER_ID,        // SQL username
-  password: process.env.PSWD,  // SQL password
-  server: process.env.SERVER_NAME,          // SQL server address
-  database: process.env.DB_NAME,         // Your DB name
+  user: process.env.USER_ID,
+  password: process.env.PSWD,
+  server: process.env.SERVER_NAME,
+  database: process.env.DB_NAME,
   options: {
     encrypt: false,
     trustServerCertificate: true
   }
 };
-console.log("SQL Configuration:", CONFIG)
+
 const RENDER_URL = process.env.RENDER_URL;
 const API_KEY = process.env.API_KEY;
+
 console.log("Render URL:", RENDER_URL);
-console.log("API Key:", API_KEY);
-console.log("GET URL:", `${RENDER_URL}/pending`);
-console.log("POST URL:", `${RENDER_URL}/pending`);
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function pollRender() {
+  let pool;
+
   try {
-    // const response = await axios.get(RENDER_URL, {
-    //   headers: { "x-api-key": API_KEY }
-    // });
-const response = await axios.get(`${RENDER_URL}/pending`, {
-  headers: { "x-api-key": API_KEY }
-});
-// console.log("POSTING BACK:");
-// console.log("requestId:", req.requestId);
-// console.log("data:", result.recordset);
-    response.data.forEach(req => {
-      console.log("Received request:", req);
+    const response = await axios.get(`${RENDER_URL}/pending`, {
+      headers: { "x-api-key": API_KEY },
+      timeout: 30000
     });
 
-    const requests = response.data;
+    const requests = response.data || [];
 
-    if (requests.length === 0) return;
+    if (requests.length === 0) {
+      console.log("No pending requests.");
+      return;
+    }
 
-    const pool = await sql.connect(CONFIG);
+    pool = await sql.connect(CONFIG);
 
     for (const req of requests) {
-        console.log("Processing student:", req.studentId);
-        console.log("for trip id:", req.tripid);
-        console.log("at academic year:", req.curyear);
+      console.log("Processing student:", req.studentId);
+      console.log("Trip:", req.tripid, "Year:", req.curyear);
 
-        console.log("DEBUG VALUES:");
-        console.log("studentId =", req.studentId, typeof req.studentId);
-        console.log("tripid =", req.tripid, typeof req.tripid);
-        console.log("curyear =", req.curyear, typeof req.curyear)
-        const debugQuery = `
-        SELECT ISNULL(SUM(PAIDAMOUNT),0) AS TOTPAID
-        FROM [EA-FINANCE].ALSSONACTIVITIES.DBO.AM_TRP_REC
-        WHERE CURYEAR='${req.curyear}'
-        AND tripid=${req.tripid}
-        AND S_CODE='${req.studentId}'
-        `;
+      const result = await pool.request()
+        .input("studentId", sql.VarChar, req.studentId)
+        .input("curyear", sql.VarChar, req.curyear)
+        .input("tripid", sql.Int, req.tripid)
+        .query(`
+          SELECT ISNULL(SUM(PAIDAMOUNT),0) AS TOTPAID
+          FROM [EA-FINANCE].ALSSONACTIVITIES.DBO.AM_TRP_REC
+          WHERE CURYEAR = @curyear
+            AND tripid = @tripid
+            AND S_CODE = @studentId
+        `);
 
-        //console.log("DEBUG QUERY:", debugQuery);
-        console.log(RENDER_URL)
-
-    //   const result = await pool.request()
-    //     .input("studentId", sql.VarChar, req.studentId)
-    //     .input("curyear", sql.VarChar, req.curyear)
-    //     .input("tripid", sql.Int, req.tripid)
-
-    //     .query("SELECT ISNULL(SUM(PAIDAMOUNT),0) AS TOTPAID FROM [EA-FINANCE].ALSSONACTIVITIES.DBO.AM_TRP_REC WHERE CURYEAR=@curyear and tripid=@tripid and S_CODE = @studentId");
-
-const result = await pool.request()
-    .input("studentId", sql.VarChar, req.studentId)
-    .input("curyear", sql.VarChar, req.curyear)
-    .input("tripid", sql.Int, req.tripid)
-    .query(`
-        SELECT ISNULL(SUM(PAIDAMOUNT),0) AS TOTPAID
-        FROM [EA-FINANCE].ALSSONACTIVITIES.DBO.AM_TRP_REC
-        WHERE CURYEAR = @curyear
-          AND tripid = @tripid
-          AND S_CODE = @studentId
-    `);
-      // await axios.post(RENDER_URL, {
-      // requestId: req.requestId,
-      // data: result.recordset
-      // }, {
-      // headers: { "x-api-key": API_KEY }
-      // });
       await axios.post(`${RENDER_URL}/pending`, {
         requestId: req.requestId,
         data: result.recordset
       }, {
-        headers: { "x-api-key": API_KEY }
+        headers: { "x-api-key": API_KEY },
+        timeout: 30000
       });
+
+      // small pause between POSTs if multiple requests exist
+      await delay(500);
     }
 
-    pool.close();
-
   } catch (err) {
-    console.error("Error:", err.message);
+    if (err.response) {
+      console.error("HTTP Error:", err.response.status, err.response.data);
+    } else {
+      console.error("Error:", err.message);
+    }
+  } finally {
+    if (pool) {
+      try {
+        await pool.close();
+      } catch (e) {}
+    }
   }
 }
 
-setInterval(pollRender, 5000);
-console.log("Bridge Agent Started...");
+async function startAgent() {
+  console.log("Bridge Agent Started...");
+
+  while (true) {
+    await pollRender();
+
+    // wait AFTER current poll completes
+    await delay(10000); // 10 sec (safer than 5 sec)
+  }
+}
+
+startAgent();
